@@ -1,0 +1,379 @@
+
+//Project-PC  BASED DATA ACQUISITION SYSTEM
+
+main.c
+
+
+#include<reg51.h>
+#include <lcd.c>
+#include<uart.c>
+#include<i2c_testing.h>
+#include<spi.h>
+
+unsigned char hr=0,min=0,sec=0;
+void main()
+{
+float k;
+lcd_init();
+uart_init();
+lcd_cmd(0x80);
+lcd_str("Time:");
+
+delay_1ms(1000);
+
+i2c_slave_write(0xd0,0x02,0x00);//hr
+i2c_slave_write(0xd0,0x01,0x10);//min
+i2c_slave_write(0xd0,0x00,0x10);//sec
+
+while(1)
+{
+uart_str("Time:");
+lcd_cmd(0x85);
+hr=i2c_slave_read(0xd0,0x02);
+lcd_data(hr/16+48);
+uart_tx(hr/16+48);
+lcd_data(hr%16+48);
+uart_tx(hr%16+48);
+lcd_data(':');
+uart_tx(':');
+
+min=i2c_slave_read(0xd0,0x01);
+lcd_data(min/16+48);
+uart_tx(min/16+48);
+lcd_data(min%16+48);
+uart_tx(min%16+48);
+lcd_data(':');
+uart_tx(':');
+
+sec=i2c_slave_read(0xd0,0x00);
+lcd_data(sec/16+48);
+uart_tx(sec/16+48);
+lcd_data(sec%16+48);
+uart_tx(sec%16+48);
+uart_tx('\n');
+uart_tx('\r');
+
+lcd_cmd(0xc0);
+uart_str("adc_value:");
+
+k=spi_adc_read(0,0);//ch0
+uart_float(k);
+lcd_float(k);
+uart_tx(0x0c);
+}
+}
+
+
+lcd.c:
+
+
+#include<reg51.h>
+#include<delay_1ms.c>
+#define lcd_d P2
+sbit rs=P1^0;
+sbit rw=P1^1;
+sbit en=P1^2;
+
+void lcd_init(void);
+void lcd_cmd(unsigned char);
+void lcd_data(unsigned char);
+void lcd_num(int n);
+void lcd_str(unsigned char *);
+void lcd_float(float f);
+
+
+ /*void main()
+   { 
+   lcd_init();
+
+	lcd_cmd(0x80);
+	lcd_float(1.234);
+	 while(1);
+   }
+
+
+   */
+
+
+
+void lcd_init(void)
+{
+lcd_cmd(0x01);
+lcd_cmd(0x02);
+lcd_cmd(0x0c);
+lcd_cmd(0x38);
+lcd_cmd(0x80);
+}
+void lcd_cmd(unsigned char c)
+{
+lcd_d=c;
+rs=0;
+rw=0;
+en=1;
+delay_1ms(2);
+en=0;
+} 
+
+void lcd_data(unsigned char c)
+{
+lcd_d=c;
+rs=1;
+rw=0;
+en=1;
+delay_1ms(2);
+en=0;
+}
+
+ void lcd_str(unsigned char *s)
+{
+while(*s)
+lcd_data(*s++);
+}
+
+void lcd_float(float f)
+{
+int temp;
+temp=f;
+lcd_num(temp);
+lcd_data('.');
+temp=(f-temp)*1000;
+lcd_num(temp);
+}
+
+
+void lcd_num(int n)
+{
+signed char a[5];
+char j=0;
+
+while(n>0)
+{
+a[j++]=n%10;
+n=n/10;
+}
+for(--j;j>=0;--j)
+lcd_data(a[j]+48);
+}
+
+
+uart.c:-
+
+
+#include<reg51.h>
+		void uart_init(void);
+		void uart_tx(unsigned char );
+		void uart_str(unsigned char *);
+		void uart_num(int n);
+		void uart_float(float n);
+
+	/*	void main()
+		{
+		   unsigned char ch; 
+		   uart_init();
+		   uart_str("VECTOR INSTITUTE");
+		   uart_num(1234);
+		   uart_float(1.234);
+
+		   while(1)
+		   {
+		ch=uart_rx();
+		uart_tx(ch);
+		 	}
+		}
+	  */
+
+
+		
+
+void uart_init()
+		{
+		SCON=0x40;
+		TMOD=0x20;
+		TH1=TL1=253;
+		TR1=1;
+		}
+
+void uart_num(int n)
+	{
+	signed char arr[5],j=0;
+	while(n>0)
+	{
+	 arr[j++]=n%10;
+	 n=n/10;
+	}
+	for(--j;j>=0;--j)
+	uart_tx(arr[j]+48);
+	}
+
+ void uart_str(unsigned char *s)
+  {
+	while(*s)
+	uart_tx(*s++);
+
+  } 
+ 
+ void uart_float(float f)
+{
+int temp;
+temp=f;
+uart_num(temp);
+uart_tx('.');
+temp=(f-temp)*1000;
+lcd_num(temp);
+}
+
+void uart_tx(unsigned char d)
+{
+ SBUF=d;
+ while(TI==0);
+ TI=0;
+}
+
+
+i2c_testing.h:-
+
+
+
+#include<intrins.h>
+
+sbit scl=P3^2;
+sbit  sda=P3^3;
+
+ void i2c_start(void)
+ {
+ scl=1;
+ sda=1;
+ sda=0;
+}
+
+void i2c_stop(void)
+{
+sda=0;
+scl=1;
+sda=1;
+}
+
+void i2c_bytewrite(unsigned char d)
+{
+ unsigned char j;
+ for(j=0;j<8;j++)
+ {
+ scl=0;
+ sda=d&(0x80>>j)?1:0;
+ scl=1;
+}
+}
+
+void i2c_ack(void)
+{
+ scl=0;
+ sda=1;
+ scl=1;
+// while(sda==1);
+ scl=0;
+}
+
+unsigned char i2c_byteread(void)
+{
+unsigned char j,buf=0;
+for(j=0;j<8;j++)
+{
+scl=0;
+_nop_();
+scl=1;
+if(sda)
+buf|=(0x80>>j);
+}
+ return buf;
+}
+
+
+void i2c_noack(void)
+{
+ scl=0;
+ sda=1;
+ scl=1;
+ scl=0;
+ }
+
+void i2c_slave_write(unsigned char sa,unsigned char r_addr,unsigned char dat)
+{
+i2c_start();
+i2c_bytewrite(sa);
+i2c_ack();
+
+i2c_bytewrite(r_addr);
+i2c_ack();
+
+i2c_bytewrite(dat);
+i2c_ack();
+i2c_stop();
+delay_1ms(10);
+}
+
+unsigned char i2c_slave_read(unsigned char sa,unsigned char r_addr)
+{
+unsigned char buff;
+i2c_start();
+i2c_bytewrite(sa);
+i2c_ack();
+i2c_bytewrite(r_addr);
+i2c_ack();
+
+i2c_start();
+i2c_bytewrite(sa|1);//0101 0000|1=1010 0001
+i2c_ack();
+
+buff=i2c_byteread();
+i2c_noack();
+i2c_stop();
+return buff;
+}
+
+
+spi.h:-
+
+
+sbit cs=P1^3;
+sbit miso=P1^4;
+sbit mosi=P1^5;
+sbit clk=P1^6;
+ 
+float spi_adc_read(bit d1,bit d0)
+{
+unsigned char adc_val=0;
+char j;
+clk=0;mosi=1;clk=1;
+clk=0;mosi=1;clk=1;
+clk=0;clk=1;
+clk=0;mosi=d0;clk=1;
+clk=0;mosi=d1;clk=1;
+clk=0;clk=1;//sampling
+clk=0;clk=1;
+
+//read 12 bit
+for(j=11;j>=0;j--)
+{
+clk=0;
+if(miso)
+adc_val|=(1<<j);
+clk=1;
+}
+cs=1;
+return((adc_val*5.0)/4096);
+}
+
+
+
+delay_1ms.c:-
+
+
+void delay_1ms(int dly)
+{
+ unsigned char v;
+for(dly;dly>0;dly--)
+{
+for(v=250;v>0;v--);
+for(v=247;v>0;v--);
+}
+}
